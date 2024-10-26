@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 from dotenv import load_dotenv
 import os
+import csv
 
 # Load the environment variables from .env file
 load_dotenv()
@@ -35,7 +36,14 @@ async def get_power_consumption(host: str, username: str, password: str, interva
         last_power = 0.0
         start_time = datetime.now()
         
+        # Create CSV file
+        csv_filename = f"power_data_{start_time.strftime('%Y%m%d_%H%M%S')}.csv"
+        with open(csv_filename, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(["Timestamp", "Power (W)", "Current (A)", "Resistance (Ω)", "Energy (Wh)", "Runtime"])
+        
         print("\nStarting power monitoring...")
+        print(f"Data will be saved to {csv_filename}")
         print("Press Ctrl+C to stop monitoring\n")
         print("Timestamp\t\tPower (W)\tCurrent (A)\tResistance (Ω)\tEnergy (Wh)\tRuntime")
         print("-" * 100)
@@ -81,6 +89,18 @@ async def get_power_consumption(host: str, username: str, password: str, interva
                           f"{total_energy:8.2f}\t"
                           f"{runtime_str}")
                     
+                    # Save to CSV
+                    with open(csv_filename, 'a', newline='') as csvfile:
+                        csvwriter = csv.writer(csvfile)
+                        csvwriter.writerow([
+                            current_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            f"{power:.2f}",
+                            f"{estimated_current:.3f}",
+                            resistance_str.strip(),
+                            f"{total_energy:.2f}",
+                            runtime_str
+                        ])
+                    
                     last_power = power
                 else:
                     print("Device does not support current consumption reading.")
@@ -105,6 +125,7 @@ async def get_power_consumption(host: str, username: str, password: str, interva
                     print(f"Average Resistance: {average_resistance:.1f} Ω")
                 else:
                     print("Average Resistance: ∞ Ω")
+            print(f"\nData saved to {csv_filename}")
                 
     except Exception as e:
         print(f"\nError getting power consumption: {str(e)}", file=sys.stderr)
