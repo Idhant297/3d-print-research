@@ -1,0 +1,6 @@
+paho-mqtt
+python-kasa
+python-dotenv
+asyncio
+pandas
+plotly

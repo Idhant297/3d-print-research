@@ -3,6 +3,7 @@ from kasa import Discover
 import sys
 from datetime import datetime
 from dotenv import load_dotenv
+import json
 import os
 import csv
 
@@ -34,86 +35,129 @@ async def get_power_consumption(host: str, username: str, password: str, interva
         # Initialize counters for energy tracking
         total_energy = 0.0  # in watt-hours
         last_power = 0.0
-        start_time = datetime.now()
-        
-        # Create CSV file
-        csv_filename = f"power_data_{start_time.strftime('%Y%m%d_%H%M%S')}.csv"
-        with open(csv_filename, 'w', newline='') as csvfile:
-            csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(["Timestamp", "Power (W)", "Current (A)", "Resistance (Ω)", "Energy (Wh)", "Runtime"])
-        
-        print("\nStarting power monitoring...")
-        print(f"Data will be saved to {csv_filename}")
-        print("Press Ctrl+C to stop monitoring\n")
-        print("Timestamp\t\tPower (W)\tCurrent (A)\tResistance (Ω)\tEnergy (Wh)\tRuntime")
-        print("-" * 100)
+        start_time = None
+        csv_filename = None
 
+        print("\nWaiting for print_type to be 'local' to start monitoring...")
+        
         while True:
-            await device.update()
-            current_time = datetime.now()
-            
-            if device.has_emeter:
-                emeter = device.modules.get("Energy")
-                if emeter and hasattr(emeter, 'current_consumption'):
-                    # Get power consumption
-                    power = emeter.current_consumption or 0.0
-                    
-                    # Calculate estimated current (P = V * I, so I = P/V)
-                    estimated_current = power / STANDARD_VOLTAGE if power > 0 else 0.0
-                    
-                    # Calculate resistance (R = V/I = V²/P)
-                    # We use V²/P instead of V/I to avoid division by zero when current is very small
-                    resistance = (STANDARD_VOLTAGE ** 2) / power if power > 1.0 else float('inf')
-                    
-                    # Calculate energy used since last reading
-                    time_diff = (current_time - start_time).total_seconds() / 3600  # convert to hours
-                    if last_power > 0:
-                        # Use average power between readings for more accurate energy calculation
-                        avg_power = (last_power + power) / 2
-                        total_energy += (avg_power * interval / 3600)  # convert to watt-hours
-                    
-                    # Format runtime
-                    runtime = current_time - start_time
-                    hours = int(runtime.total_seconds() // 3600)
-                    minutes = int((runtime.total_seconds() % 3600) // 60)
-                    seconds = int(runtime.total_seconds() % 60)
-                    runtime_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                    
-                    # Print the values
-                    # Use "∞" for infinite resistance when power is very low
-                    resistance_str = f"{resistance:8.1f}" if resistance != float('inf') else "    ∞    "
-                    print(f"{current_time.strftime('%Y-%m-%d %H:%M:%S')}\t"
-                          f"{power:8.2f}\t"
-                          f"{estimated_current:8.3f}\t"
-                          f"{resistance_str}\t"
-                          f"{total_energy:8.2f}\t"
-                          f"{runtime_str}")
-                    
-                    # Save to CSV
-                    with open(csv_filename, 'a', newline='') as csvfile:
-                        csvwriter = csv.writer(csvfile)
-                        csvwriter.writerow([
-                            current_time.strftime('%Y-%m-%d %H:%M:%S'),
-                            f"{power:.2f}",
-                            f"{estimated_current:.3f}",
-                            resistance_str.strip(),
-                            f"{total_energy:.2f}",
-                            runtime_str
-                        ])
-                    
-                    last_power = power
-                else:
-                    print("Device does not support current consumption reading.")
-                    break
-            else:
-                print("Device does not have energy monitoring capabilities.")
-                break
+            # Check the latest_message.json for print_type
+            with open('latest_message.json', 'r') as json_file:
+                data = json.load(json_file)
+                print_type = data.get("print", {}).get("print_type", "")
 
-            await asyncio.sleep(interval)
+            if print_type == "local":
+                if start_time is None:
+                    start_time = datetime.now()
+                    # Create CSV file in the data folder
+                    csv_filename = os.path.join('data', f"power_data_{start_time.strftime('%Y-%m-%d_%H.%M')}.csv")
+                    with open(csv_filename, 'w', newline='') as csvfile:
+                        csvwriter = csv.writer(csvfile)
+                        csvwriter.writerow(["Timestamp", "Power (W)", "Current (A)", "Resistance (Ω)", "Energy (Wh)", "Runtime"])
+                    
+                    print("\nStarting power monitoring...")
+                    print(f"Data will be saved to {csv_filename}")
+                    print("Press Ctrl+C to stop monitoring\n")
+                    print("Timestamp\t\tPower (W)\tCurrent (A)\tResistance (Ω)\tEnergy (Wh)\tRuntime")
+                    print("-" * 100)
+
+                await device.update()
+                current_time = datetime.now()
+                
+                if device.has_emeter:
+                    emeter = device.modules.get("Energy")
+                    if emeter and hasattr(emeter, 'current_consumption'):
+                        # Get power consumption
+                        power = emeter.current_consumption or 0.0
+                        
+                        # Calculate estimated current (P = V * I, so I = P/V)
+                        estimated_current = power / STANDARD_VOLTAGE if power > 0 else 0.0
+                        
+                        # Calculate resistance (R = V/I = V²/P)
+                        resistance = (STANDARD_VOLTAGE ** 2) / power if power > 1.0 else float('inf')
+                        
+                        # Calculate energy used since last reading
+                        time_diff = (current_time - start_time).total_seconds() / 3600  # convert to hours
+                        if last_power > 0:
+                            avg_power = (last_power + power) / 2
+                            total_energy += (avg_power * interval / 3600)  # convert to watt-hours
+                        
+                        # Format runtime
+                        runtime = current_time - start_time
+                        hours = int(runtime.total_seconds() // 3600)
+                        minutes = int((runtime.total_seconds() % 3600) // 60)
+                        seconds = int(runtime.total_seconds() % 60)
+                        runtime_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        
+                        # Print the values
+                        resistance_str = f"{resistance:8.1f}" if resistance != float('inf') else "    ∞    "
+                        print(f"{current_time.strftime('%Y-%m-%d %H:%M:%S')}\t"
+                              f"{power:8.2f}\t"
+                              f"{estimated_current:8.3f}\t"
+                              f"{resistance_str}\t"
+                              f"{total_energy:8.2f}\t"
+                              f"{runtime_str}")
+                        
+                        # Save to CSV
+                        with open(csv_filename, 'a', newline='') as csvfile:
+                            csvwriter = csv.writer(csvfile)
+                            csvwriter.writerow([
+                                current_time.strftime('%Y-%m-%d %H:%M:%S'),
+                                f"{power:.2f}",
+                                f"{estimated_current:.3f}",
+                                resistance_str.strip(),
+                                f"{total_energy:.2f}",
+                                runtime_str
+                            ])
+                        
+                        last_power = power
+                    else:
+                        print("Device does not support current consumption reading.")
+                        break
+                else:
+                    print("Device does not have energy monitoring capabilities.")
+                    break
+
+                await asyncio.sleep(interval)
+            elif print_type == "idle" and start_time is not None:
+                print("Print completed")
+                duration = (datetime.now() - start_time).total_seconds() / 3600  # hours
+                print(f"\nMonitoring Summary:")
+                print(f"Duration: {duration:.2f} hours")
+                print(f"Total Energy Consumed: {total_energy:.2f} Wh")
+                if duration > 0:
+                    print(f"Average Power: {(total_energy/duration):.2f} W")
+                    average_resistance = (STANDARD_VOLTAGE ** 2)/(total_energy/duration) if total_energy > 0 else float('inf')
+                    if average_resistance != float('inf'):
+                        print(f"Average Resistance: {average_resistance:.1f} Ω")
+                    else:
+                        print("Average Resistance: ∞ Ω")
+                print(f"\nData saved to {csv_filename}")
+
+                # Save summary to JSON file
+                summary = {
+                    "Duration": f"{duration:.2f} hours",
+                    "Total Energy Consumed": f"{total_energy:.2f} Wh",
+                    "Average Power": f"{(total_energy/duration):.2f} W" if duration > 0 else "N/A",
+                    "Average Resistance": f"{average_resistance:.1f} ohms" if average_resistance != float('inf') else "∞ ohms"
+                }
+                json_filename = csv_filename.replace('.csv', '_summary.json')
+                with open(json_filename, 'w') as jsonfile:
+                    json.dump(summary, jsonfile, indent=4)
+                print(f"Summary saved to {json_filename}")
+
+                # Reset for next monitoring session
+                start_time = None
+                total_energy = 0.0
+                last_power = 0.0
+                csv_filename = None
+                print("\nWaiting for print_type to be 'local' to start monitoring again...")
+            else:
+                await asyncio.sleep(1)  # Check every second for the print_type change
 
     except asyncio.CancelledError:
         print("\nMonitoring stopped by user")
-        if 'start_time' in locals():
+        if start_time:
             duration = (datetime.now() - start_time).total_seconds() / 3600  # hours
             print(f"\nMonitoring Summary:")
             print(f"Duration: {duration:.2f} hours")
@@ -126,6 +170,18 @@ async def get_power_consumption(host: str, username: str, password: str, interva
                 else:
                     print("Average Resistance: ∞ Ω")
             print(f"\nData saved to {csv_filename}")
+
+            # Save summary to JSON file
+            summary = {
+                "Duration": f"{duration:.2f} hours",
+                "Total Energy Consumed": f"{total_energy:.2f} Wh",
+                "Average Power": f"{(total_energy/duration):.2f} W" if duration > 0 else "N/A",
+                "Average Resistance": f"{average_resistance:.1f} ohms" if average_resistance != float('inf') else "∞ ohms"
+            }
+            json_filename = csv_filename.replace('.csv', '_summary.json')
+            with open(json_filename, 'w') as jsonfile:
+                json.dump(summary, jsonfile, indent=4)
+            print(f"Summary saved to {json_filename}")
                 
     except Exception as e:
         print(f"\nError getting power consumption: {str(e)}", file=sys.stderr)
