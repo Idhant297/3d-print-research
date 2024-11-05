@@ -195,7 +195,7 @@ async def main():
     HOST = os.getenv("KASA_HOST", "104.38.175.55")
     USERNAME = os.getenv("KASA_USERNAME")
     PASSWORD = os.getenv("KASA_PASSWORD")
-    INTERVAL = 2
+    INTERVAL = 1 # in sec, kept to 1 dont change it
     
     # Validate environment variables
     if not all([HOST, USERNAME, PASSWORD]):

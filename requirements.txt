@@ -4,3 +4,4 @@ python-dotenv
 asyncio
 pandas
 plotly
+python-dotenv
