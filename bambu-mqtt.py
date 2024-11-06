@@ -22,7 +22,6 @@ def update_json(new_data, filename="latest_message.json"):
                     source[key] = value
             return source
         
-        # Update existing data with new values
         updated_data = deep_update(existing_data, new_data)
         
         # Write back to file
@@ -35,9 +34,20 @@ def update_json(new_data, filename="latest_message.json"):
         return None
 
 def on_connect(client, userdata, flags, rc):
-    print(f"Connected with result code {rc}")
-    client.subscribe("device/01S00C3A2500071/report")
-    print("Subscribed to device/01S00C3A2500071/report")
+    connection_codes = {
+        0: "Connected successfully",
+        1: "Invalid protocol version",
+        2: "Invalid client ID",
+        3: "Server unavailable",
+        4: "Invalid credentials",
+        5: "Not authorized"
+    }
+    print(f"Connection result: {connection_codes.get(rc, f'Unknown error ({rc})')}")
+    
+    if rc == 0:
+        print("Successfully connected to broker")
+        client.subscribe("device/01S00C3A2500071/report")
+        print("Subscribed to device/01S00C3A2500071/report")
 
 def on_message(client, userdata, message):
     try:
@@ -51,13 +61,16 @@ def on_message(client, userdata, message):
     except Exception as e:
         print(f"Error processing message: {e}")
 
-# Create client
-client = mqtt.Client()
+# Create client with protocol v3.1.1 explicitly
+client = mqtt.Client(protocol=mqtt.MQTTv311)
 client.on_connect = on_connect
 client.on_message = on_message
 
 # Set up TLS
-client.tls_set(cert_reqs=ssl.CERT_NONE)
+context = ssl.create_default_context()
+context.check_hostname = False
+context.verify_mode = ssl.CERT_NONE
+client.tls_set_context(context)
 client.tls_insecure_set(True)
 
 # Load environment variables
@@ -71,6 +84,7 @@ broker_address = os.getenv("IP_ADDRESS")
 port = int(os.getenv("PORT"))
 
 try:
+    print(f"Attempting to connect to {broker_address}:{port}")
     client.connect(broker_address, port, 60)
     print(f"Connected to broker at {broker_address}:{port}")
     client.loop_forever()
